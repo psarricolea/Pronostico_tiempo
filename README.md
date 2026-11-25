@@ -58,3 +58,15 @@ python -m http.server -d ../site  # abrir http://localhost:8000
 - Verificación contra estaciones (DMC, red Ecowitt).
 
 Fuente: *Adapted from ECMWF IFS forecast data by ECMWF, licensed under CC BY 4.0.*
+
+## Autoría y cómo citar
+
+Desarrollado por **Pablo Sarricolea**, Departamento de Geografía, Universidad de Chile.
+
+Si usas este visor o sus productos, cítalo así:
+
+> Sarricolea, P. (2026). *Pronóstico del tiempo para Chile: visor ECMWF IFS* [Aplicación web]. Departamento de Geografía, Universidad de Chile. https://psarricolea.github.io/Pronostico_tiempo/
+
+Y cita también la fuente de los datos:
+
+> ECMWF (2026). *IFS Open Data*. European Centre for Medium-Range Weather Forecasts. Licencia CC-BY-4.0.

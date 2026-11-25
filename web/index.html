@@ -28,6 +28,12 @@
   th { color:var(--suave); font-weight:500; }
   .tmax { color:#c0392b; font-weight:600; } .tmin { color:#2471a3; font-weight:600; }
   footer { color:var(--suave); font-size:.75rem; margin-top:1.5rem; line-height:1.5; }
+  .cita { background:var(--fondo); border:1px solid var(--linea); border-radius:6px; padding:.6rem .8rem; margin-top:1rem; font-size:.8rem; line-height:1.5; }
+  .cita h3 { margin:0 0 .3rem; font-size:.85rem; }
+  .cita p { margin:.25rem 0; }
+  .cita button { font-size:.75rem; padding:.15rem .5rem; border:1px solid var(--linea); background:#fff; border-radius:4px; cursor:pointer; }
+  header .autor { opacity:.8; font-size:.8rem; margin-top:.15rem; }
+  header .autor a { color:#fff; }
   .ctl { background:#fff; padding:.6rem .7rem; border-radius:6px; box-shadow:0 1px 5px rgba(0,0,0,.25);
          font:13px/1.4 system-ui, sans-serif; min-width:210px; }
   .ctl b { display:block; margin-bottom:.25rem; }
@@ -50,6 +56,7 @@
 <header>
   <h1>Pronóstico del tiempo para Chile</h1>
   <p id="meta">Cargando…</p>
+  <p class="autor">Desarrollado por Pablo Sarricolea · Departamento de Geografía, Universidad de Chile</p>
 </header>
 <div class="app">
   <div id="mapa"></div>
@@ -58,6 +65,12 @@
     <div class="sub" id="punto"></div>
     <table id="tabla"></table>
     <img id="meteograma" alt="Meteograma de 10 días">
+    <section class="cita">
+      <h3>Cómo citar</h3>
+      <p id="textoCita">Sarricolea, P. (2026). <i>Pronóstico del tiempo para Chile: visor ECMWF IFS</i> [Aplicación web]. Departamento de Geografía, Universidad de Chile. https://psarricolea.github.io/Pronostico_tiempo/</p>
+      <p>Datos del modelo: ECMWF (2026). <i>IFS Open Data</i>. European Centre for Medium-Range Weather Forecasts. Licencia CC-BY-4.0.</p>
+      <button id="copiarCita" type="button">Copiar cita</button>
+    </section>
     <footer>
       Pronóstico determinista del modelo IFS de ECMWF, sin postproceso estadístico. Valores de ciudades en el punto de grilla más cercano.
       Día de los mapas: 03 a 03 h de Chile; la T máx. sale de salidas de 3/6 h y subestima levemente la máxima real.
@@ -173,6 +186,11 @@ fetch("datos/pronostico.json", { cache: "no-store" }).then(r => r.json()).then(d
   const inicial = location.hash.slice(1);
   mostrarCiudad(d.ciudades.some(c => c.slug === inicial) ? inicial : "santiago");
 }).catch(e => { console.error(e); document.getElementById("meta").textContent = "Aún no hay pronóstico generado."; });
+document.getElementById("copiarCita").onclick = e => {
+  navigator.clipboard.writeText(document.getElementById("textoCita").innerText).then(() => {
+    e.target.textContent = "Copiada ✓"; setTimeout(() => e.target.textContent = "Copiar cita", 1500);
+  });
+};
 </script>
 </body>
 </html>
