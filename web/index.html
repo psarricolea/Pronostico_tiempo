@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pronóstico del tiempo · Chile · ECMWF IFS</title>
+<style>
+  :root { --tinta:#1c2833; --suave:#5d6d7e; --linea:#d5d8dc; --acento:#1b4f72; --fondo:#f7f9fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--tinta); background:var(--fondo); }
+  header { background:var(--acento); color:#fff; padding:1.2rem 1.5rem; }
+  header h1 { margin:0; font-size:1.4rem; font-weight:600; }
+  header p { margin:.3rem 0 0; opacity:.85; font-size:.9rem; }
+  main { max-width:1100px; margin:0 auto; padding:1rem 1.5rem 3rem; }
+  nav.tabs { display:flex; gap:.5rem; margin:1rem 0; }
+  nav.tabs button { border:1px solid var(--linea); background:#fff; padding:.5rem 1rem; border-radius:6px; cursor:pointer; font-size:.95rem; }
+  nav.tabs button.activo { background:var(--acento); color:#fff; border-color:var(--acento); }
+  select, input[type=range] { font-size:1rem; padding:.3rem; }
+  .panel { display:none; } .panel.activo { display:block; }
+  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius:8px; padding:1rem; margin-top:1rem; }
+  img { max-width:100%; height:auto; display:block; margin:0 auto; }
+  table { border-collapse:collapse; width:100%; font-size:.9rem; margin-top:.8rem; }
+  th, td { border-bottom:1px solid var(--linea); padding:.35rem .5rem; text-align:center; }
+  th { color:var(--suave); font-weight:500; }
+  .tmax { color:#c0392b; font-weight:600; } .tmin { color:#2471a3; font-weight:600; }
+  footer { color:var(--suave); font-size:.8rem; margin-top:2rem; line-height:1.5; }
+  .fila { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pronóstico del tiempo para Chile</h1>
+  <p id="meta">Cargando…</p>
+</header>
+<main>
+  <nav class="tabs">
+    <button data-panel="ciudades" class="activo">Ciudades</button>
+    <button data-panel="mapas">Mapas diarios</button>
+  </nav>
+
+  <section id="ciudades" class="panel activo">
+    <div class="fila">
+      <label for="ciudad">Ciudad:</label>
+      <select id="ciudad"></select>
+    </div>
+    <div class="tarjeta">
+      <img id="meteograma" alt="Meteograma de 10 días">
+      <table id="tabla"></table>
+    </div>
+  </section>
+
+  <section id="mapas" class="panel">
+    <div class="fila">
+      <label for="dia">Día:</label>
+      <input type="range" id="dia" min="0" value="0">
+      <span id="etiquetaDia"></span>
+    </div>
+    <div class="tarjeta"><img id="mapa" alt="Mapa diario"></div>
+  </section>
+
+  <footer>
+    Pronóstico determinista del modelo IFS de ECMWF, sin postproceso estadístico. Valores en el punto de grilla más cercano a cada ciudad.
+    Fuente: ECMWF Open Data, licencia CC-BY-4.0 (“Adapted from ECMWF IFS forecast data by ECMWF”).
+    Actualización automática con GitHub Actions.
+  </footer>
+</main>
+<script>
+const dias = ["dom","lun","mar","mié","jue","vie","sáb"];
+const fmt = f => { const d = new Date(f + "T12:00:00"); return `${dias[d.getDay()]} ${d.getDate()}`; };
+let datos;
+
+document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav.tabs button, .panel").forEach(e => e.classList.remove("activo"));
+  b.classList.add("activo"); document.getElementById(b.dataset.panel).classList.add("activo");
+});
+
+function mostrarCiudad(slug) {
+  const c = datos.ciudades.find(x => x.slug === slug);
+  document.getElementById("meteograma").src = "datos/" + c.imagen + "?v=" + datos.corrida;
+  const filas = c.diario;
+  document.getElementById("tabla").innerHTML =
+    "<tr><th></th>" + filas.map(r => `<th>${fmt(r.fecha)}</th>`).join("") + "</tr>" +
+    "<tr><th>Máx</th>" + filas.map(r => `<td class="tmax">${Math.round(r.tmax)}°</td>`).join("") + "</tr>" +
+    "<tr><th>Mín</th>" + filas.map(r => `<td class="tmin">${Math.round(r.tmin)}°</td>`).join("") + "</tr>" +
+    "<tr><th>pp (mm)</th>" + filas.map(r => `<td>${r.pp >= 0.5 ? r.pp.toFixed(1) : "–"}</td>`).join("") + "</tr>";
+}
+
+function mostrarMapa(i) {
+  const m = datos.mapas[i];
+  document.getElementById("mapa").src = "datos/" + m.archivo + "?v=" + datos.corrida;
+  document.getElementById("etiquetaDia").textContent = `Día ${m.dia} · ${fmt(m.fecha)}`;
+}
+
+fetch("datos/pronostico.json", {cache: "no-store"}).then(r => r.json()).then(d => {
+  datos = d;
+  const corr = new Date(d.corrida + "Z");
+  document.getElementById("meta").textContent =
+    `ECMWF IFS ${d.resolucion}° · corrida ${corr.toISOString().slice(0,13).replace("T"," ")}z · generado ${d.generado.slice(0,16).replace("T"," ")}`;
+  const sel = document.getElementById("ciudad");
+  sel.innerHTML = d.ciudades.map(c => `<option value="${c.slug}">${c.nombre}</option>`).join("");
+  sel.value = "santiago"; sel.onchange = () => mostrarCiudad(sel.value);
+  mostrarCiudad(sel.value);
+  const r = document.getElementById("dia");
+  r.max = d.mapas.length - 1; r.oninput = () => mostrarMapa(+r.value);
+  mostrarMapa(0);
+}).catch(() => document.getElementById("meta").textContent = "Aún no hay pronóstico generado.");
+</script>
+</body>
+</html>
