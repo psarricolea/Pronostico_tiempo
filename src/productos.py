@@ -14,6 +14,24 @@ from matplotlib.colors import BoundaryNorm, ListedColormap
 
 import config
 
+def _r1(x):
+    """Redondea a 1 decimal como float de Python (None si es NaN), apto para JSON."""
+    x = float(x)
+    return None if np.isnan(x) else round(x, 1)
+
+
+def _json_np(o):
+    """Convierte tipos numpy/pandas que json no sabe serializar."""
+    if isinstance(o, np.generic):
+        v = o.item()
+        return None if isinstance(v, float) and np.isnan(v) else v
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, (pd.Timestamp, np.datetime64)):
+        return str(o)
+    return str(o)
+
+
 TZ = config.ZONA_HORARIA
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
@@ -202,12 +220,13 @@ def generar(ds, info, carpeta: Path):
             "nombre": nombre,
             "slug": slug(nombre),
             "imagen": f"meteograma_{slug(nombre)}.png",
-            "diario": [{"fecha": str(d.date()), "tmax": round(r.tmax, 1),
-                        "tmin": round(r.tmin, 1), "pp": round(r.pp, 1)}
+            "diario": [{"fecha": str(d.date()), "tmax": _r1(r.tmax),
+                        "tmin": _r1(r.tmin), "pp": _r1(r.pp)}
                        for d, r in diaria.iterrows()],
         })
     mapas = mapas_diarios(ds, info, carpeta)
     meta = {**info, "generado": pd.Timestamp.now(tz=TZ).isoformat(timespec="minutes"),
             "ciudades": ciudades, "mapas": mapas}
-    (carpeta / "pronostico.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1))
+    (carpeta / "pronostico.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=1, default=_json_np))
     return meta
