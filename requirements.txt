@@ -1,0 +1,8 @@
+ecmwf-opendata>=0.3
+xarray
+cfgrib
+eccodes
+numpy
+pandas
+matplotlib
+cartopy
