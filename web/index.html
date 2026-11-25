@@ -49,6 +49,8 @@
   .leyenda .barra { display:flex; } .leyenda .barra span { width:16px; height:12px; }
   .leyenda .marcas { display:flex; } .leyenda .marcas span { width:16px; text-align:left; transform:translateX(-4px); }
   .capa-grilla { image-rendering:pixelated; }
+  .valor { font:12px/1.35 system-ui, sans-serif; padding:.25rem .45rem; }
+  .valor .tmax { color:#c0392b; } .valor .pp { color:#1f618d; font-weight:600; }
   .etq { background:transparent; border:0; box-shadow:none; color:#1c2833; font-weight:600; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
   @media (max-width:800px) {
     .app { grid-template-columns:1fr; grid-template-rows:60vh auto; }
@@ -79,7 +81,7 @@
       <button id="copiarCita" type="button">Copiar cita</button>
     </section>
     <footer>
-      Pronóstico determinista del modelo IFS (Sistema Integrado de Pronóstico) de ECMWF (European Centre for Medium-Range Weather Forecasts, o Centro Europeo de Previsiones Meteorológicas a Plazo Medio), sin postproceso estadístico. Valores de ciudades en el punto de grilla más cercano.
+      Pronóstico determinista del modelo IFS (Sistema Integrado de Pronóstico) de ECMWF (European Centre for Medium-Range Weather Forecasts, o Centro Europeo de Previsiones Meteorológicas a Plazo Medio), sin postproceso estadístico. Valores de ciudades y del cursor sobre el mapa en el punto de grilla más cercano.
       Día de los mapas: 03 a 03 h de Chile; la T máx. sale de salidas de 3/6 h y subestima levemente la máxima real.
       Fuente: ECMWF Open Data, licencia CC-BY-4.0 (“Adapted from ECMWF IFS forecast data by ECMWF”).
       Actualización automática con GitHub Actions.
@@ -91,6 +93,8 @@ const DIAS = ["dom","lun","mar","mié","jue","vie","sáb"];
 const fmt = f => { const d = new Date(f + "T12:00:00"); return `${DIAS[d.getDay()]} ${d.getDate()}`; };
 const v = (x, d=0) => x == null ? "–" : x.toFixed(d);
 let datos, capa = "pp", dia = 0, opacidad = 0.8, overlay = null, leyenda, marcadores = {}, seleccionada = null;
+const grillas = {};            // día -> Int16Array [pp..., tmax...] en décimas
+let etiquetaCursor = null;
 
 const mapa = L.map("mapa", { zoomSnap: 0.25 }).setView([-36, -71], 4.5);
 const base = {
@@ -141,6 +145,7 @@ function actualizarCapa() {
   document.getElementById("etqDia").textContent = `Día ${d.dia} · ${fmt(d.fecha)}`;
   const m = datos.mapas.find(x => x.dia === d.dia);
   document.getElementById("png").href = m ? "datos/" + m.archivo + "?v=" + datos.corrida : "#";
+  cargarGrilla(dia);
   if (!capa) return;
   overlay = L.imageOverlay(`datos/${d[capa]}?v=${datos.corrida}`, datos.capas.limites,
                            { opacity: opacidad, className: "capa-grilla" }).addTo(mapa);
@@ -149,10 +154,40 @@ function actualizarCapa() {
   leyenda.addTo(mapa);
 }
 
+// ---------- valores de pp y T máx. bajo el cursor
+function cargarGrilla(i) {
+  const d = datos.capas.dias[i];
+  if (grillas[i] || !d.grilla) return;
+  grillas[i] = "cargando";
+  fetch(`datos/${d.grilla}?v=${datos.corrida}`).then(r => r.ok ? r.arrayBuffer() : Promise.reject(r.status))
+    .then(b => { grillas[i] = new Int16Array(b); })
+    .catch(() => { delete grillas[i]; });
+}
+function valorEn(latlng) {
+  const g = datos.capas.grilla, a = grillas[dia];
+  if (!g || !(a instanceof Int16Array)) return null;
+  const f = Math.round((latlng.lat - g.lat0) / g.dlat), c = Math.round((latlng.lng - g.lon0) / g.dlon);
+  if (f < 0 || f >= g.nlat || c < 0 || c >= g.nlon) return null;
+  const k = f * g.nlon + c, n = g.nlat * g.nlon, pp = a[k], tx = a[n + k];
+  return { pp: pp === -32768 ? null : pp / 10, tmax: tx === -32768 ? null : tx / 10 };
+}
+function mostrarValor(e) {
+  const x = valorEn(e.latlng);
+  if (!x) { if (etiquetaCursor) { mapa.removeLayer(etiquetaCursor); etiquetaCursor = null; } return; }
+  const html = `<span class="pp">${x.pp == null ? "–" : x.pp < 0.5 ? "0" : x.pp.toFixed(1)} mm</span> · ` +
+               `<span class="tmax">${x.tmax == null ? "–" : x.tmax.toFixed(1)} °C</span>` +
+               `<br><small>${fmt(datos.capas.dias[dia].fecha)} · ${e.latlng.lat.toFixed(2)}°, ${e.latlng.lng.toFixed(2)}°</small>`;
+  if (!etiquetaCursor) etiquetaCursor = L.tooltip({ direction: "top", offset: [0, -12], className: "valor" });
+  etiquetaCursor.setLatLng(e.latlng).setContent(html);
+  if (!mapa.hasLayer(etiquetaCursor)) etiquetaCursor.addTo(mapa);
+}
+mapa.on("mousemove", mostrarValor);
+mapa.on("mouseout", () => { if (etiquetaCursor) { mapa.removeLayer(etiquetaCursor); etiquetaCursor = null; } });
+
 // ---------- panel de ciudad
 function mostrarCiudad(slug) {
   const c = datos.ciudades.find(x => x.slug === slug);
-  if (seleccionada) marcadores[seleccionada].setStyle({ radius: 6, weight: 1.5, fillColor: "#1b4f72" });
+  if (seleccionada) marcadores[seleccionada].setStyle(estilo(datos.ciudades.find(x => x.slug === seleccionada)));
   marcadores[slug].setStyle({ radius: 9, weight: 3, fillColor: "#e67e22" }).bringToFront();
   seleccionada = slug;
   document.getElementById("nombre").textContent = c.nombre;
@@ -167,6 +202,10 @@ function mostrarCiudad(slug) {
   history.replaceState(null, "", "#" + slug);
 }
 
+function estilo(c) {
+  return c.principal === false ? { radius: 4, weight: 1, fillColor: "#5d6d7e" } : { radius: 6, weight: 1.5, fillColor: "#1b4f72" };
+}
+
 fetch("datos/pronostico.json", { cache: "no-store" }).then(r => r.json()).then(d => {
   datos = d;
   const corr = new Date(d.corrida + "Z");
@@ -175,8 +214,9 @@ fetch("datos/pronostico.json", { cache: "no-store" }).then(r => r.json()).then(d
 
   d.ciudades.forEach(c => {
     const hoy = c.diario.find(r => r.fecha === d.capas.dias[0].fecha) || c.diario[0];
-    const m = L.circleMarker([c.lat, c.lon], { radius: 6, weight: 1.5, color: "#fff", fillColor: "#1b4f72", fillOpacity: 1, pane: "etiquetas" })
-      .bindTooltip(`${c.nombre}`, { permanent: true, direction: "right", className: "etq", offset: [6, 0], pane: "etiquetas" })
+    const principal = c.principal !== false;
+    const m = L.circleMarker([c.lat, c.lon], { ...estilo(c), color: "#fff", fillOpacity: 1, pane: "etiquetas" })
+      .bindTooltip(`${c.nombre}`, { permanent: principal, direction: "right", className: "etq", offset: [6, 0], pane: "etiquetas" })
       .on("click", () => mostrarCiudad(c.slug)).addTo(mapa);
     m.bindPopup(`<b>${c.nombre}</b><br>${fmt(hoy.fecha)}: <span class="tmax">${v(hoy.tmax)}°</span> / <span class="tmin">${v(hoy.tmin)}°</span>` +
                 (hoy.pp >= 0.5 ? ` · ${hoy.pp.toFixed(1)} mm` : ""));
