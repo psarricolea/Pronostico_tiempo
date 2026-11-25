@@ -1,0 +1,46 @@
+name: Pronóstico ECMWF
+
+on:
+  schedule:
+    # 0.25° de la corrida 00z/12z está completo ~8 h después; 0.1° ~2 h más tarde.
+    - cron: "20 10 * * *"   # corrida 00z  (07:20 hora de Chile en verano)
+    - cron: "20 22 * * *"   # corrida 12z
+  workflow_dispatch: {}      # botón "Run workflow" para correrlo a mano
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pronostico
+  cancel-in-progress: true
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Descargar pronóstico y generar productos
+        working-directory: src
+        run: python main.py
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
