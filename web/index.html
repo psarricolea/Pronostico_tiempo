@@ -4,27 +4,46 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pronóstico del tiempo · Chile · ECMWF IFS</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <style>
   :root { --tinta:#1c2833; --suave:#5d6d7e; --linea:#d5d8dc; --acento:#1b4f72; --fondo:#f7f9fa; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--tinta); background:var(--fondo); }
-  header { background:var(--acento); color:#fff; padding:1.2rem 1.5rem; }
-  header h1 { margin:0; font-size:1.4rem; font-weight:600; }
-  header p { margin:.3rem 0 0; opacity:.85; font-size:.9rem; }
-  main { max-width:1100px; margin:0 auto; padding:1rem 1.5rem 3rem; }
-  nav.tabs { display:flex; gap:.5rem; margin:1rem 0; }
-  nav.tabs button { border:1px solid var(--linea); background:#fff; padding:.5rem 1rem; border-radius:6px; cursor:pointer; font-size:.95rem; }
-  nav.tabs button.activo { background:var(--acento); color:#fff; border-color:var(--acento); }
-  select, input[type=range] { font-size:1rem; padding:.3rem; }
-  .panel { display:none; } .panel.activo { display:block; }
-  .tarjeta { background:#fff; border:1px solid var(--linea); border-radius:8px; padding:1rem; margin-top:1rem; }
-  img { max-width:100%; height:auto; display:block; margin:0 auto; }
-  table { border-collapse:collapse; width:100%; font-size:.9rem; margin-top:.8rem; }
-  th, td { border-bottom:1px solid var(--linea); padding:.35rem .5rem; text-align:center; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; font-family:system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--tinta); background:var(--fondo);
+         display:flex; flex-direction:column; }
+  header { background:var(--acento); color:#fff; padding:.8rem 1.2rem; flex:none; }
+  header h1 { margin:0; font-size:1.25rem; font-weight:600; }
+  header p { margin:.2rem 0 0; opacity:.85; font-size:.85rem; }
+  .app { flex:1; display:grid; grid-template-columns:minmax(320px, 42%) 1fr; min-height:0; }
+  #mapa { height:100%; min-height:420px; }
+  aside { overflow:auto; padding:1rem 1.2rem 2rem; border-left:1px solid var(--linea); background:#fff; }
+  aside h2 { margin:.2rem 0 .1rem; font-size:1.2rem; }
+  aside .sub { color:var(--suave); font-size:.8rem; margin-bottom:.6rem; }
+  aside img { max-width:100%; height:auto; display:block; margin-top:.8rem; }
+  table { border-collapse:collapse; width:100%; font-size:.85rem; }
+  th, td { border-bottom:1px solid var(--linea); padding:.3rem .25rem; text-align:center; }
   th { color:var(--suave); font-weight:500; }
   .tmax { color:#c0392b; font-weight:600; } .tmin { color:#2471a3; font-weight:600; }
-  footer { color:var(--suave); font-size:.8rem; margin-top:2rem; line-height:1.5; }
-  .fila { display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+  footer { color:var(--suave); font-size:.75rem; margin-top:1.5rem; line-height:1.5; }
+  .ctl { background:#fff; padding:.6rem .7rem; border-radius:6px; box-shadow:0 1px 5px rgba(0,0,0,.25);
+         font:13px/1.4 system-ui, sans-serif; min-width:210px; }
+  .ctl b { display:block; margin-bottom:.25rem; }
+  .ctl label { display:block; cursor:pointer; }
+  .ctl input[type=range] { width:100%; }
+  .ctl .dia { font-weight:600; margin:.3rem 0 .1rem; }
+  .ctl a { font-size:12px; }
+  .leyenda { background:#fff; padding:.45rem .6rem; border-radius:6px; box-shadow:0 1px 5px rgba(0,0,0,.25); font:11px system-ui, sans-serif; }
+  .leyenda .barra { display:flex; } .leyenda .barra span { width:16px; height:12px; }
+  .leyenda .marcas { display:flex; } .leyenda .marcas span { width:16px; text-align:left; transform:translateX(-4px); }
+  .capa-grilla { image-rendering:pixelated; }
+  .etq { background:transparent; border:0; box-shadow:none; color:#1c2833; font-weight:600; text-shadow:0 0 3px #fff, 0 0 3px #fff; }
+  @media (max-width:800px) {
+    .app { grid-template-columns:1fr; grid-template-rows:60vh auto; }
+    aside { border-left:0; border-top:1px solid var(--linea); }
+  }
 </style>
 </head>
 <body>
@@ -32,78 +51,128 @@
   <h1>Pronóstico del tiempo para Chile</h1>
   <p id="meta">Cargando…</p>
 </header>
-<main>
-  <nav class="tabs">
-    <button data-panel="ciudades" class="activo">Ciudades</button>
-    <button data-panel="mapas">Mapas diarios</button>
-  </nav>
-
-  <section id="ciudades" class="panel activo">
-    <div class="fila">
-      <label for="ciudad">Ciudad:</label>
-      <select id="ciudad"></select>
-    </div>
-    <div class="tarjeta">
-      <img id="meteograma" alt="Meteograma de 10 días">
-      <table id="tabla"></table>
-    </div>
-  </section>
-
-  <section id="mapas" class="panel">
-    <div class="fila">
-      <label for="dia">Día:</label>
-      <input type="range" id="dia" min="0" value="0">
-      <span id="etiquetaDia"></span>
-    </div>
-    <div class="tarjeta"><img id="mapa" alt="Mapa diario"></div>
-  </section>
-
-  <footer>
-    Pronóstico determinista del modelo IFS de ECMWF, sin postproceso estadístico. Valores en el punto de grilla más cercano a cada ciudad.
-    Fuente: ECMWF Open Data, licencia CC-BY-4.0 (“Adapted from ECMWF IFS forecast data by ECMWF”).
-    Actualización automática con GitHub Actions.
-  </footer>
-</main>
+<div class="app">
+  <div id="mapa"></div>
+  <aside>
+    <h2 id="nombre">Selecciona una ciudad en el mapa</h2>
+    <div class="sub" id="punto"></div>
+    <table id="tabla"></table>
+    <img id="meteograma" alt="Meteograma de 10 días">
+    <footer>
+      Pronóstico determinista del modelo IFS de ECMWF, sin postproceso estadístico. Valores de ciudades en el punto de grilla más cercano.
+      Día de los mapas: 03 a 03 h de Chile; la T máx. sale de salidas de 3/6 h y subestima levemente la máxima real.
+      Fuente: ECMWF Open Data, licencia CC-BY-4.0 (“Adapted from ECMWF IFS forecast data by ECMWF”).
+      Actualización automática con GitHub Actions.
+    </footer>
+  </aside>
+</div>
 <script>
-const dias = ["dom","lun","mar","mié","jue","vie","sáb"];
-const fmt = f => { const d = new Date(f + "T12:00:00"); return `${dias[d.getDay()]} ${d.getDate()}`; };
-let datos;
+const DIAS = ["dom","lun","mar","mié","jue","vie","sáb"];
+const fmt = f => { const d = new Date(f + "T12:00:00"); return `${DIAS[d.getDay()]} ${d.getDate()}`; };
+const v = (x, d=0) => x == null ? "–" : x.toFixed(d);
+let datos, capa = "pp", dia = 0, opacidad = 0.8, overlay = null, leyenda, marcadores = {}, seleccionada = null;
 
-document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("nav.tabs button, .panel").forEach(e => e.classList.remove("activo"));
-  b.classList.add("activo"); document.getElementById(b.dataset.panel).classList.add("activo");
+const mapa = L.map("mapa", { zoomSnap: 0.25 }).setView([-36, -71], 4.5);
+const base = {
+  "Claro": L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    { maxZoom: 12, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>' }),
+  "Relieve": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
+    { maxZoom: 12, attribution: "Esri" }),
+  "OpenStreetMap": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxZoom: 12, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }),
+};
+base["Claro"].addTo(mapa);
+L.control.layers(base, null, { position: "topleft" }).addTo(mapa);
+L.control.scale({ imperial: false }).addTo(mapa);
+// Etiquetas de ciudades sobre los rásteres
+mapa.createPane("etiquetas"); mapa.getPane("etiquetas").style.zIndex = 650;
+
+// ---------- control de capas / día / opacidad
+const Ctl = L.Control.extend({
+  options: { position: "topright" },
+  onAdd() {
+    const d = L.DomUtil.create("div", "ctl");
+    d.innerHTML = `
+      <b>Capa</b>
+      <label><input type="radio" name="capa" value="pp" checked> Precipitación diaria</label>
+      <label><input type="radio" name="capa" value="tmax"> Temperatura máxima</label>
+      <label><input type="radio" name="capa" value=""> Ninguna</label>
+      <div class="dia" id="etqDia"></div>
+      <input type="range" id="dia" min="0" value="0">
+      <label style="margin-top:.3rem">Opacidad <input type="range" id="opac" min="0" max="1" step="0.05" value="0.8"></label>
+      <a id="png" target="_blank" rel="noopener">Ver mapa estático (PNG)</a>`;
+    L.DomEvent.disableClickPropagation(d); L.DomEvent.disableScrollPropagation(d);
+    return d;
+  }
 });
+new Ctl().addTo(mapa);
 
+function leyendaHTML(ly) {
+  const n = ly.niveles, c = ly.colores, paso = Math.max(1, Math.ceil(n.length / 12));
+  return `<div><b>${capa === "pp" ? "Precipitación" : "T máx."}</b> (${ly.unidad})</div>
+    <div class="barra">${c.map(x => `<span style="background:${x}"></span>`).join("")}</div>
+    <div class="marcas">${n.slice(0, c.length).map((x, i) => `<span>${i % paso ? "" : x}</span>`).join("")}</div>`;
+}
+
+function actualizarCapa() {
+  if (overlay) { mapa.removeLayer(overlay); overlay = null; }
+  if (leyenda) { mapa.removeControl(leyenda); leyenda = null; }
+  const d = datos.capas.dias[dia];
+  document.getElementById("etqDia").textContent = `Día ${d.dia} · ${fmt(d.fecha)}`;
+  const m = datos.mapas.find(x => x.dia === d.dia);
+  document.getElementById("png").href = m ? "datos/" + m.archivo + "?v=" + datos.corrida : "#";
+  if (!capa) return;
+  overlay = L.imageOverlay(`datos/${d[capa]}?v=${datos.corrida}`, datos.capas.limites,
+                           { opacity: opacidad, className: "capa-grilla" }).addTo(mapa);
+  leyenda = L.control({ position: "bottomleft" });
+  leyenda.onAdd = () => { const e = L.DomUtil.create("div", "leyenda"); e.innerHTML = leyendaHTML(datos.capas.leyendas[capa]); return e; };
+  leyenda.addTo(mapa);
+}
+
+// ---------- panel de ciudad
 function mostrarCiudad(slug) {
   const c = datos.ciudades.find(x => x.slug === slug);
-  document.getElementById("meteograma").src = "datos/" + c.imagen + "?v=" + datos.corrida;
-  const filas = c.diario;
+  if (seleccionada) marcadores[seleccionada].setStyle({ radius: 6, weight: 1.5, fillColor: "#1b4f72" });
+  marcadores[slug].setStyle({ radius: 9, weight: 3, fillColor: "#e67e22" }).bringToFront();
+  seleccionada = slug;
+  document.getElementById("nombre").textContent = c.nombre;
+  document.getElementById("punto").textContent = `Punto de grilla ${c.punto[0].toFixed(2)}°, ${c.punto[1].toFixed(2)}° · hora de Chile`;
+  const f = c.diario;
   document.getElementById("tabla").innerHTML =
-    "<tr><th></th>" + filas.map(r => `<th>${fmt(r.fecha)}</th>`).join("") + "</tr>" +
-    "<tr><th>Máx</th>" + filas.map(r => `<td class="tmax">${Math.round(r.tmax)}°</td>`).join("") + "</tr>" +
-    "<tr><th>Mín</th>" + filas.map(r => `<td class="tmin">${Math.round(r.tmin)}°</td>`).join("") + "</tr>" +
-    "<tr><th>pp (mm)</th>" + filas.map(r => `<td>${r.pp >= 0.5 ? r.pp.toFixed(1) : "–"}</td>`).join("") + "</tr>";
+    "<tr><th></th>" + f.map(r => `<th>${fmt(r.fecha)}</th>`).join("") + "</tr>" +
+    "<tr><th>Máx</th>" + f.map(r => `<td class="tmax">${v(r.tmax)}°</td>`).join("") + "</tr>" +
+    "<tr><th>Mín</th>" + f.map(r => `<td class="tmin">${v(r.tmin)}°</td>`).join("") + "</tr>" +
+    "<tr><th>pp</th>" + f.map(r => `<td>${r.pp != null && r.pp >= 0.5 ? r.pp.toFixed(1) : "–"}</td>`).join("") + "</tr>";
+  document.getElementById("meteograma").src = "datos/" + c.imagen + "?v=" + datos.corrida;
+  history.replaceState(null, "", "#" + slug);
 }
 
-function mostrarMapa(i) {
-  const m = datos.mapas[i];
-  document.getElementById("mapa").src = "datos/" + m.archivo + "?v=" + datos.corrida;
-  document.getElementById("etiquetaDia").textContent = `Día ${m.dia} · ${fmt(m.fecha)}`;
-}
-
-fetch("datos/pronostico.json", {cache: "no-store"}).then(r => r.json()).then(d => {
+fetch("datos/pronostico.json", { cache: "no-store" }).then(r => r.json()).then(d => {
   datos = d;
   const corr = new Date(d.corrida + "Z");
   document.getElementById("meta").textContent =
     `ECMWF IFS ${d.resolucion}° · corrida ${corr.toISOString().slice(0,13).replace("T"," ")}z · generado ${d.generado.slice(0,16).replace("T"," ")}`;
-  const sel = document.getElementById("ciudad");
-  sel.innerHTML = d.ciudades.map(c => `<option value="${c.slug}">${c.nombre}</option>`).join("");
-  sel.value = "santiago"; sel.onchange = () => mostrarCiudad(sel.value);
-  mostrarCiudad(sel.value);
+
+  d.ciudades.forEach(c => {
+    const hoy = c.diario.find(r => r.fecha === d.capas.dias[0].fecha) || c.diario[0];
+    const m = L.circleMarker([c.lat, c.lon], { radius: 6, weight: 1.5, color: "#fff", fillColor: "#1b4f72", fillOpacity: 1, pane: "etiquetas" })
+      .bindTooltip(`${c.nombre}`, { permanent: true, direction: "right", className: "etq", offset: [6, 0], pane: "etiquetas" })
+      .on("click", () => mostrarCiudad(c.slug)).addTo(mapa);
+    m.bindPopup(`<b>${c.nombre}</b><br>${fmt(hoy.fecha)}: <span class="tmax">${v(hoy.tmax)}°</span> / <span class="tmin">${v(hoy.tmin)}°</span>` +
+                (hoy.pp >= 0.5 ? ` · ${hoy.pp.toFixed(1)} mm` : ""));
+    marcadores[c.slug] = m;
+  });
+  mapa.fitBounds(d.capas.limites, { padding: [10, 10] });
+
   const r = document.getElementById("dia");
-  r.max = d.mapas.length - 1; r.oninput = () => mostrarMapa(+r.value);
-  mostrarMapa(0);
-}).catch(() => document.getElementById("meta").textContent = "Aún no hay pronóstico generado.");
+  r.max = d.capas.dias.length - 1; r.oninput = () => { dia = +r.value; actualizarCapa(); };
+  document.getElementById("opac").oninput = e => { opacidad = +e.target.value; if (overlay) overlay.setOpacity(opacidad); };
+  document.querySelectorAll("input[name=capa]").forEach(e => e.onchange = () => { capa = e.value; actualizarCapa(); });
+  actualizarCapa();
+
+  const inicial = location.hash.slice(1);
+  mostrarCiudad(d.ciudades.some(c => c.slug === inicial) ? inicial : "santiago");
+}).catch(e => { console.error(e); document.getElementById("meta").textContent = "Aún no hay pronóstico generado."; });
 </script>
 </body>
 </html>
