@@ -234,6 +234,15 @@ def _guardar_capa(campo: xr.DataArray, cmap, norm, ruta: Path, mascara=None, alf
     plt.imsave(ruta, _a_mercator(rgba, lat))
 
 
+def _guardar_grilla(pp: xr.DataArray, tmax: xr.DataArray, ruta: Path):
+    """Valores diarios en binario Int16 (décimas; -32768 = sin dato), latitud
+    ascendente, para leerlos en el navegador al pasar el cursor: [pp..., tmax...]."""
+    def a16(c):
+        v = np.rint(c.sortby("latitude").values * 10)
+        return np.where(np.isfinite(v), v, -32768).astype("<i2")
+    ruta.write_bytes(np.concatenate([a16(pp).ravel(), a16(tmax).ravel()]).tobytes())
+
+
 def capas_leaflet(ds, carpeta: Path) -> dict:
     """PNG transparentes por día (precipitación y T máx.) + límites y leyendas."""
     tiempos = pd.DatetimeIndex(ds["tiempo"].values)
@@ -247,15 +256,21 @@ def capas_leaflet(ds, carpeta: Path) -> dict:
         _guardar_capa(pp, cmap_pp, norm_pp, carpeta / f"capa_pp_dia{i}.png", mascara=pp >= 0.5)
         _guardar_capa(tmax.clip(NIVELES_T[0], NIVELES_T[-1] - 0.01), cmap_t, norm_t,
                       carpeta / f"capa_tmax_dia{i}.png", alfa=0.7)
+        _guardar_grilla(pp, tmax, carpeta / f"grilla_dia{i}.bin")
         dia_local = (a.tz_localize("UTC").tz_convert(TZ) + pd.Timedelta(hours=3)).date()
         dias.append({"dia": i, "fecha": str(dia_local),
-                     "pp": f"capa_pp_dia{i}.png", "tmax": f"capa_tmax_dia{i}.png"})
+                     "pp": f"capa_pp_dia{i}.png", "tmax": f"capa_tmax_dia{i}.png",
+                     "grilla": f"grilla_dia{i}.bin"})
     lat, lon = ds.latitude.values, ds.longitude.values
     rlat, rlon = abs(float(lat[1] - lat[0])) / 2, abs(float(lon[1] - lon[0])) / 2
     limites = [[float(lat.min()) - rlat, float(lon.min()) - rlon],
                [float(lat.max()) + rlat, float(lon.max()) + rlon]]
     colores_t = [matplotlib.colors.to_hex(cmap_t(k)) for k in range(cmap_t.N)]
-    return {"limites": limites, "dias": dias,
+    lat_asc = np.sort(lat)
+    grilla = {"lat0": round(float(lat_asc[0]), 4), "lon0": round(float(lon.min()), 4),
+              "dlat": round(rlat * 2, 4), "dlon": round(rlon * 2, 4),
+              "nlat": int(len(lat)), "nlon": int(len(lon))}
+    return {"limites": limites, "dias": dias, "grilla": grilla,
             "leyendas": {"pp": {"niveles": NIVELES_PP, "colores": COLORES_PP, "unidad": "mm/día"},
                          "tmax": {"niveles": NIVELES_T, "colores": colores_t, "unidad": "°C"}}}
 
@@ -270,7 +285,9 @@ def slug(s):
 def generar(ds, info, carpeta: Path):
     carpeta.mkdir(parents=True, exist_ok=True)
     ciudades = []
-    for nombre, (lat, lon) in config.CIUDADES.items():
+    todas = [(n, c, True) for n, c in config.CIUDADES.items()] + \
+            [(n, c, False) for n, c in getattr(config, "CIUDADES_SECUNDARIAS", {}).items()]
+    for nombre, (lat, lon), principal in todas:
         df = serie_ciudad(ds, lat, lon)
         meteograma(nombre, df, info, carpeta)
         diaria = df.resample("D").agg({"t2m": ["max", "min"], "pp": "sum"})
@@ -279,6 +296,7 @@ def generar(ds, info, carpeta: Path):
         ciudades.append({
             "nombre": nombre,
             "slug": slug(nombre),
+            "principal": principal,
             "lat": lat, "lon": lon, "punto": [round(plat, 3), round(plon, 3)],
             "imagen": f"meteograma_{slug(nombre)}.png",
             "diario": [{"fecha": str(d.date()), "tmax": _r1(r.tmax),
