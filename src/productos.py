@@ -201,6 +201,65 @@ def mapas_diarios(ds, info, carpeta: Path) -> list:
     return salida
 
 
+# ------------------------------------------------------ capas para Leaflet
+NIVELES_PP = [0.5, 1, 2, 5, 10, 20, 30, 50, 75, 100, 150]
+COLORES_PP = ["#d6eaf8", "#aed6f1", "#85c1e9", "#5dade2", "#2e86c1",
+              "#1b4f72", "#7d3c98", "#a569bd", "#e74c3c", "#922b21"]
+NIVELES_T = list(range(-10, 42, 2))
+
+
+def _a_mercator(campo: np.ndarray, lat: np.ndarray) -> np.ndarray:
+    """Re-muestrea filas de una grilla regular lat/lon a filas equiespaciadas en
+    Web Mercator, para que L.imageOverlay quede bien georreferenciada.
+    `campo` (lat, lon) con `lat` ascendente; devuelve norte arriba."""
+    def y(phi):
+        return np.log(np.tan(np.pi / 4 + np.radians(phi) / 2))
+    res = abs(float(lat[1] - lat[0]))
+    lat_s, lat_n = float(lat[0]) - res / 2, float(lat[-1]) + res / 2
+    filas = int(round(len(lat) * (y(lat_n) - y(lat_s)) / np.radians(lat_n - lat_s)))
+    ys = np.linspace(y(lat_n), y(lat_s), filas, endpoint=False) - (y(lat_n) - y(lat_s)) / filas / 2
+    lat_out = np.degrees(2 * np.arctan(np.exp(ys)) - np.pi / 2)
+    idx = np.clip(np.rint(np.interp(lat_out, lat, np.arange(len(lat)))).astype(int), 0, len(lat) - 1)
+    return campo[idx, :]
+
+
+def _guardar_capa(campo: xr.DataArray, cmap, norm, ruta: Path, mascara=None, alfa=0.8):
+    campo = campo.sortby("latitude")
+    lat = campo.latitude.values
+    rgba = cmap(norm(campo.values))
+    rgba[..., 3] = alfa
+    if mascara is not None:
+        rgba[..., 3] = np.where(mascara.sortby("latitude").values, alfa, 0)
+    rgba[np.isnan(campo.values), 3] = 0
+    plt.imsave(ruta, _a_mercator(rgba, lat))
+
+
+def capas_leaflet(ds, carpeta: Path) -> dict:
+    """PNG transparentes por día (precipitación y T máx.) + límites y leyendas."""
+    tiempos = pd.DatetimeIndex(ds["tiempo"].values)
+    cmap_pp, norm_pp = ListedColormap(COLORES_PP), BoundaryNorm(NIVELES_PP, len(COLORES_PP))
+    cmap_t = plt.get_cmap("RdYlBu_r", len(NIVELES_T) - 1)
+    norm_t = BoundaryNorm(NIVELES_T, cmap_t.N, extend="neither")
+    dias = []
+    for i, (a, b) in enumerate(ventanas_diarias(tiempos), start=1):
+        pp = ds["tp"].sel(tiempo=b) - ds["tp"].sel(tiempo=a)
+        tmax = ds["t2m"].sel(tiempo=slice(a, b)).max("tiempo")
+        _guardar_capa(pp, cmap_pp, norm_pp, carpeta / f"capa_pp_dia{i}.png", mascara=pp >= 0.5)
+        _guardar_capa(tmax.clip(NIVELES_T[0], NIVELES_T[-1] - 0.01), cmap_t, norm_t,
+                      carpeta / f"capa_tmax_dia{i}.png", alfa=0.7)
+        dia_local = (a.tz_localize("UTC").tz_convert(TZ) + pd.Timedelta(hours=3)).date()
+        dias.append({"dia": i, "fecha": str(dia_local),
+                     "pp": f"capa_pp_dia{i}.png", "tmax": f"capa_tmax_dia{i}.png"})
+    lat, lon = ds.latitude.values, ds.longitude.values
+    rlat, rlon = abs(float(lat[1] - lat[0])) / 2, abs(float(lon[1] - lon[0])) / 2
+    limites = [[float(lat.min()) - rlat, float(lon.min()) - rlon],
+               [float(lat.max()) + rlat, float(lon.max()) + rlon]]
+    colores_t = [matplotlib.colors.to_hex(cmap_t(k)) for k in range(cmap_t.N)]
+    return {"limites": limites, "dias": dias,
+            "leyendas": {"pp": {"niveles": NIVELES_PP, "colores": COLORES_PP, "unidad": "mm/día"},
+                         "tmax": {"niveles": NIVELES_T, "colores": colores_t, "unidad": "°C"}}}
+
+
 # ---------------------------------------------------------------- todo
 def slug(s):
     import unicodedata
@@ -216,17 +275,20 @@ def generar(ds, info, carpeta: Path):
         meteograma(nombre, df, info, carpeta)
         diaria = df.resample("D").agg({"t2m": ["max", "min"], "pp": "sum"})
         diaria.columns = ["tmax", "tmin", "pp"]
+        plat, plon = df.attrs["punto"]
         ciudades.append({
             "nombre": nombre,
             "slug": slug(nombre),
+            "lat": lat, "lon": lon, "punto": [round(plat, 3), round(plon, 3)],
             "imagen": f"meteograma_{slug(nombre)}.png",
             "diario": [{"fecha": str(d.date()), "tmax": _r1(r.tmax),
                         "tmin": _r1(r.tmin), "pp": _r1(r.pp)}
                        for d, r in diaria.iterrows()],
         })
     mapas = mapas_diarios(ds, info, carpeta)
+    capas = capas_leaflet(ds, carpeta)
     meta = {**info, "generado": pd.Timestamp.now(tz=TZ).isoformat(timespec="minutes"),
-            "ciudades": ciudades, "mapas": mapas}
+            "ciudades": ciudades, "mapas": mapas, "capas": capas}
     (carpeta / "pronostico.json").write_text(
         json.dumps(meta, ensure_ascii=False, indent=1, default=_json_np))
     return meta
