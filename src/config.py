@@ -38,3 +38,28 @@ CIUDADES = {
     "Coyhaique": (-45.57, -72.07),
     "Punta Arenas": (-53.16, -70.92),
 }
+
+# Ciudades secundarias: punto más pequeño y nombre solo al pasar el cursor
+CIUDADES_SECUNDARIAS = {
+    "Putre": (-18.20, -69.56),
+    "Calama": (-22.46, -68.93),
+    "San Pedro de Atacama": (-22.91, -68.20),
+    "Tocopilla": (-22.09, -70.20),
+    "Vallenar": (-28.58, -70.76),
+    "Ovalle": (-30.60, -71.20),
+    "Los Andes": (-32.83, -70.60),
+    "San Antonio": (-33.59, -71.61),
+    "San Fernando": (-34.59, -70.99),
+    "Curicó": (-34.98, -71.24),
+    "Linares": (-35.85, -71.59),
+    "Los Ángeles": (-37.47, -72.35),
+    "Angol": (-37.80, -72.71),
+    "Villarrica": (-39.28, -72.23),
+    "Osorno": (-40.57, -73.13),
+    "Castro": (-42.48, -73.76),
+    "Chaitén": (-42.92, -72.71),
+    "Puerto Aysén": (-45.40, -72.69),
+    "Cochrane": (-47.25, -72.57),
+    "Puerto Natales": (-51.73, -72.51),
+    "Puerto Williams": (-54.93, -67.61),
+}
